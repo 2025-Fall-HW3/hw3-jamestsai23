@@ -70,7 +70,34 @@ class MyPortfolio:
         """
         TODO: Complete Task 4 Below
         """
-        
+
+        # 使用整段歷史資料，做一個「靜態」的 Mean-Variance Tangency Portfolio：
+        # w ∝ Σ^{-1} μ，然後做 long-only（負的砍掉）、總和 = 1。
+
+        # 1. 取所有期間的資產日報酬（不含 SPY）
+        R = self.returns[assets]          # DataFrame: (T, m)
+        mu = R.mean(axis=0).values        # shape (m,)
+        Sigma = R.cov().values            # shape (m, m)
+
+        # 2. 算 Σ 的 pseudo-inverse（比較穩）
+        Sigma_inv = np.linalg.pinv(Sigma)
+
+        # 3. 未正規化權重：w_tilde = Σ^{-1} μ
+        raw_w = Sigma_inv @ mu            # shape (m,)
+
+        # 4. long-only：把負的砍成 0
+        raw_w = np.maximum(raw_w, 0.0)
+
+        # 5. 正規化成 sum(w) = 1，如果全 0 就退回 equal weight
+        if raw_w.sum() <= 1e-8:
+            w = np.ones(len(assets)) / len(assets)
+        else:
+            w = raw_w / raw_w.sum()       # shape (m,)
+
+        # 6. 將這組固定權重套用到每一天
+        for date in self.price.index:
+            self.portfolio_weights.loc[date, assets] = w
+
         
         """
         TODO: Complete Task 4 Above
