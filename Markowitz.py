@@ -62,6 +62,16 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
+        # For each day, assign equal weights to all assets except the excluded one (SPY)
+        num_assets = len(assets)   # assets already excludes SPY
+
+        # Create a weight vector for equal weight
+        equal_w = np.ones(num_assets) / num_assets
+
+        # Fill every day with the same weight
+        for date in df.index:
+            self.portfolio_weights.loc[date, assets] = equal_w
+
 
         """
         TODO: Complete Task 1 Above
@@ -113,6 +123,21 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
+
+        # 完全仿照 MeanVariance 的迴圈寫法：從 (lookback + 1) 開始
+        for i in range(self.lookback + 1, len(df)):
+            # 用最近 self.lookback 天的報酬
+            R = df_returns.copy()[assets].iloc[i - self.lookback : i]   # shape: (lookback, m)
+
+            # 計算每個資產的波動度 σ_i
+            sigma = R.std(axis=0)   # 這裡得到的是 Series，index=assets
+
+            # 依照題目公式： w_i = (1/σ_i) / Σ_j (1/σ_j)
+            inv_sigma = 1.0 / sigma
+            weights = inv_sigma / inv_sigma.sum()   # 這是一個 Series，index=assets
+
+            # 把權重寫進當天
+            self.portfolio_weights.loc[df.index[i], assets] = weights.values
 
 
 
@@ -188,10 +213,30 @@ class MeanVariancePortfolio:
                 TODO: Complete Task 3 Below
                 """
 
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
+                # 1. 建立決策變數 w
+                #    - n 維
+                #    - 下界 0 (long-only)
+                #    - 上界 1（可設可不設，因為我們有 sum(w) == 1）
+                w = model.addMVar(n, name="w", lb=0.0, ub=1.0)
+
+                # 2. quadratic term：w^T Σ w
+                #   這是 Gurobi 官方推薦的寫法，型別一定正確
+                quad = w @ Sigma @ w   # QuadExpr
+
+                # 3. 線性項：mu^T w
+                linear = mu @ w       # LinExpr
+
+                # 4. 目標函數：max ( mu^T w - gamma/2 * w^T Σ w )
+                obj = linear - (gamma / 2.0) * quad
+                model.setObjective(obj, gp.GRB.MAXIMIZE)
+
+                # 5. 約束條件
+                # (1) sum_i w_i = 1  → 全部資金都投出去
+                model.addConstr(w.sum() == 1, name="budget")
+
+                # (2) w_i >= 0  → long-only
+                #     其實 lb=0 已經保證，不寫也可以；寫了也沒關係
+                # model.addConstr(w >= 0, name="long_only")
 
                 """
                 TODO: Complete Task 3 Above
